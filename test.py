@@ -1,3 +1,122 @@
+#csp past paper
+# ==========================================
+# CSP: PRESENTATION SCHEDULING
+# ==========================================
+
+# List of presentations (variables)
+tasks = ["T1", "T2", "T3", "T4", "T5"]
+
+# Slots available (domain values)
+slots = [1, 2, 3, 4, 5]
+
+# Dictionary to store assignment (solution)
+assignment = {}
+
+
+# ------------------------------------------
+# CHECK CONSTRAINTS FUNCTION
+# ------------------------------------------
+def is_valid(task, slot):
+
+    # Check if slot already assigned to another task
+    if slot in assignment.values():
+        return False
+
+    # -----------------------------
+    # Constraint 3:
+    # T5 cannot be in slot 1 or 2
+    # -----------------------------
+    if task == "T5" and slot in [1, 2]:
+        return False
+
+    # -----------------------------
+    # Constraint 5:
+    # T4 cannot be in slot 5
+    # -----------------------------
+    if task == "T4" and slot == 5:
+        return False
+
+    # -----------------------------
+    # Constraint 6:
+    # Slot 3 only for T1 or T2
+    # -----------------------------
+    if slot == 3 and task not in ["T1", "T2"]:
+        return False
+
+    # -----------------------------
+    # Now check constraints involving other assigned tasks
+    # -----------------------------
+    for t, s in assignment.items():
+
+        # Constraint 2:
+        # T2 must be before T4
+        if task == "T2" and t == "T4" and slot >= s:
+            return False
+        if task == "T4" and t == "T2" and slot <= s:
+            return False
+
+        # Constraint 4:
+        # T3 must be after T1
+        if task == "T3" and t == "T1" and slot <= s:
+            return False
+        if task == "T1" and t == "T3" and slot >= s:
+            return False
+
+        # Constraint 1:
+        # T1 and T3 not consecutive
+        if task == "T1" and t == "T3" and abs(slot - s) == 1:
+            return False
+        if task == "T3" and t == "T1" and abs(slot - s) == 1:
+            return False
+
+    return True
+
+
+# ------------------------------------------
+# BACKTRACKING FUNCTION
+# ------------------------------------------
+def backtrack(index):
+
+    # If all tasks assigned → solution found
+    if index == len(tasks):
+        return True
+
+    task = tasks[index]
+
+    # Try all slots
+    for slot in slots:
+
+        # Check if assignment is valid
+        if is_valid(task, slot):
+
+            # Assign slot
+            assignment[task] = slot
+
+            # Recur for next task
+            if backtrack(index + 1):
+                return True
+
+            # Undo assignment (backtrack)
+            del assignment[task]
+
+    return False
+
+
+# ------------------------------------------
+# RUN BACKTRACKING
+# ------------------------------------------
+if backtrack(0):
+    print("Final Schedule:")
+
+    for task in assignment:
+        print(task, "-> Slot", assignment[task])
+else:
+    print("No solution found")
+
+
+
+
+
 #MinimaxAgent
 
 import math
