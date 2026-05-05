@@ -1,3 +1,308 @@
+#q2 minimax
+# =====================================================
+# MINIMAX USING STRATEGY CARDS (NO TREE STRUCTURE)
+# =====================================================
+
+# Each card represents a move by MAX (AI)
+# Each card has 2 outcomes (responses by MIN opponent)
+
+cards = {
+    "A": [7, 3],
+    "B": [6, 5],
+    "C": [9, 1],
+    "D": [5, 11]
+}
+
+
+# =====================================================
+# (a) EXPLANATION (PRINT FOR EXAM CLARITY)
+# =====================================================
+
+print("(a) Strategy cards represent a Minimax problem where:")
+print("- Each card = MAX player's move")
+print("- Each value inside card = MIN player's response")
+print("- Instead of a tree, we directly store outcomes in lists\n")
+
+
+# =====================================================
+# (b) MIN PLAYER CHOICE (OPPONENT)
+# =====================================================
+
+# MIN player will choose the minimum value from each card
+min_values = {}   # store best move for MIN
+
+print("(b) MIN player's optimal choices:")
+
+for card in cards:
+    # opponent selects worst outcome for AI (minimum value)
+    min_val = min(cards[card])
+    min_values[card] = min_val
+    
+    print(f"Card {card}: MIN chooses {min_val} from {cards[card]}")
+
+
+# =====================================================
+# (c) MAX PLAYER CHOICE (AI)
+# =====================================================
+
+# MAX player chooses the card with highest of these minimum values
+best_card = max(min_values, key=min_values.get)
+
+print("\n(c) MAX player's decision:")
+print("AI should choose Card", best_card)
+
+
+# =====================================================
+# (d) FINAL GUARANTEED PAYOFF
+# =====================================================
+
+final_value = min_values[best_card]
+
+print("\n(d) Final guaranteed payoff for AI:", final_value)
+
+
+# =====================================================
+# (e) EXPLANATION OF ASSUMPTION
+# =====================================================
+
+print("\n(e) Minimax assumes opponent plays optimally (always minimizes AI score).")
+print("Limitation: In real-world, opponents may not always play optimally,")
+print("so Minimax may not always give best practical result.")
+
+
+
+
+#q3 part 1
+# ==========================================
+# IMPORT LIBRARIES
+# ==========================================
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+# ==========================================
+# 1. LOAD DATASET + STRUCTURE
+# ==========================================
+
+df = pd.read_csv("sales_data.csv")   # load dataset
+
+print(df.shape)      # number of rows and columns
+print(df.info())     # data types + missing values
+print(df.describe()) # statistical summary
+
+
+# ==========================================
+# 2. HANDLE MISSING VALUES
+# ==========================================
+
+# Fill CustomerID with mode (most frequent value)
+df["CustomerID"].fillna(df["CustomerID"].mode()[0], inplace=True)
+
+# Fill Description with most common value
+df["Description"].fillna(df["Description"].mode()[0], inplace=True)
+
+
+# ==========================================
+# 3. REMOVE INVALID TRANSACTIONS
+# ==========================================
+
+# Remove rows where Quantity is negative or zero
+df = df[df["Quantity"] > 0]
+
+# Remove rows where UnitPrice is zero or negative
+df = df[df["UnitPrice"] > 0]
+
+
+# ==========================================
+# 4. CONVERT DATE + EXTRACT FEATURES
+# ==========================================
+
+# Convert to datetime format
+df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"])
+
+# Extract useful time features
+df["Month"] = df["InvoiceDate"].dt.month
+df["Weekday"] = df["InvoiceDate"].dt.weekday
+df["Hour"] = df["InvoiceDate"].dt.hour
+
+
+# ==========================================
+# 5. CREATE NEW FEATURE
+# ==========================================
+
+# Total spending per transaction
+df["TotalPrice"] = df["Quantity"] * df["UnitPrice"]
+
+
+# ==========================================
+# 6. OUTLIER DETECTION (IQR METHOD)
+# ==========================================
+
+# Function to remove outliers using IQR
+def remove_outliers(col):
+    Q1 = df[col].quantile(0.25)
+    Q3 = df[col].quantile(0.75)
+    IQR = Q3 - Q1
+
+    # Keep values within range
+    return df[(df[col] >= Q1 - 1.5*IQR) & (df[col] <= Q3 + 1.5*IQR)]
+
+# Apply on Quantity and UnitPrice
+df = remove_outliers("Quantity")
+df = remove_outliers("UnitPrice")
+
+
+# ==========================================
+# 7. SALES BY COUNTRY (VISUALIZATION)
+# ==========================================
+
+df.groupby("Country")["TotalPrice"].sum().plot(kind="bar")
+plt.title("Sales by Country")
+plt.show()
+
+
+# ==========================================
+# 8. TOP SELLING PRODUCTS
+# ==========================================
+
+df.groupby("StockCode")["Quantity"].sum().nlargest(5).plot(kind="bar")
+plt.title("Top Products")
+plt.show()
+
+
+# ==========================================
+# 9. TIME-BASED ANALYSIS
+# ==========================================
+
+# Monthly trend
+df.groupby("Month")["TotalPrice"].sum().plot()
+plt.title("Monthly Sales Trend")
+plt.show()
+
+
+# ==========================================
+# 10. CUSTOMER BEHAVIOR
+# ==========================================
+
+# Transactions per customer
+df.groupby("CustomerID")["InvoiceNo"].count().plot(kind="hist")
+plt.title("Transactions per Customer")
+plt.show()
+
+
+#q3 part 2
+# ==========================================
+# IMPORT ML LIBRARIES
+# ==========================================
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+
+
+# ==========================================
+# 1. CUSTOMER-LEVEL DATASET
+# ==========================================
+
+# Aggregate data per customer
+customer_df = df.groupby("CustomerID").agg({
+    "TotalPrice": "sum",    # total spending
+    "Quantity": "sum",      # total quantity
+    "InvoiceNo": "count"    # frequency
+})
+
+# Rename columns
+customer_df.columns = ["TotalSpend", "TotalQuantity", "Frequency"]
+
+
+# ==========================================
+# 2. TRAIN-TEST SPLIT
+# ==========================================
+
+X_train, X_test = train_test_split(customer_df, test_size=0.2, random_state=42)
+
+
+# ==========================================
+# 3. FEATURE SCALING
+# ==========================================
+
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+
+# ==========================================
+# 4. K-MEANS MODEL
+# ==========================================
+
+kmeans = KMeans(n_clusters=3, random_state=42)
+kmeans.fit(X_train_scaled)
+
+
+# ==========================================
+# 5. ELBOW METHOD
+# ==========================================
+
+inertia = []
+
+for k in range(1, 6):
+    km = KMeans(n_clusters=k, random_state=42)
+    km.fit(X_train_scaled)
+    inertia.append(km.inertia_)
+
+plt.plot(range(1,6), inertia)
+plt.title("Elbow Method")
+plt.xlabel("k")
+plt.ylabel("Inertia")
+plt.show()
+
+
+# ==========================================
+# 6. ASSIGN CLUSTERS + CENTERS
+# ==========================================
+
+X_train["Cluster"] = kmeans.labels_
+
+print("Cluster Centers:")
+print(kmeans.cluster_centers_)
+
+
+# ==========================================
+# 7. PREDICT TEST DATA
+# ==========================================
+
+X_test["Cluster"] = kmeans.predict(X_test_scaled)
+
+
+# ==========================================
+# 8. COMPARE TRAIN VS TEST
+# ==========================================
+
+print("Train cluster counts:")
+print(X_train["Cluster"].value_counts())
+
+print("Test cluster counts:")
+print(X_test["Cluster"].value_counts())
+
+
+# ==========================================
+# 9. PCA VISUALIZATION
+# ==========================================
+
+pca = PCA(n_components=2)
+
+train_pca = pca.fit_transform(X_train_scaled)
+
+plt.scatter(train_pca[:,0], train_pca[:,1], c=X_train["Cluster"])
+plt.title("Train Clusters (PCA)")
+plt.show()
+
+
+
+
 #csp past paper
 # ==========================================
 # CSP: PRESENTATION SCHEDULING
