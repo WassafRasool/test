@@ -1,0 +1,435 @@
+--------------------------------------------------------------------------------
+-- =========================
+-- Q1: AGRICULTURE DATABASE SCHEMA
+-- =========================
+--------------------------------------------------------------------------------
+
+---------------------------------------------------------
+-- ZONE TABLE
+---------------------------------------------------------
+CREATE TABLE zone (
+    zone_code NUMBER PRIMARY KEY,
+    zone_name VARCHAR2(50),
+    climate_type VARCHAR2(50),
+    soil_quality VARCHAR2(50),
+    cultivated_area NUMBER
+);
+
+---------------------------------------------------------
+-- FARMER TABLE
+---------------------------------------------------------
+CREATE TABLE farmer (
+    farmer_id NUMBER PRIMARY KEY,
+    farmer_name VARCHAR2(50),
+    experience NUMBER,
+    contact VARCHAR2(50)
+);
+
+---------------------------------------------------------
+-- FARMER ↔ ZONE (MANY TO MANY)
+---------------------------------------------------------
+CREATE TABLE farmer_zone (
+    farmer_id NUMBER,
+    zone_code NUMBER,
+    supervision_start_date DATE,
+    PRIMARY KEY (farmer_id, zone_code),
+    FOREIGN KEY (farmer_id) REFERENCES farmer(farmer_id),
+    FOREIGN KEY (zone_code) REFERENCES zone(zone_code)
+);
+
+---------------------------------------------------------
+-- CROP TABLE
+---------------------------------------------------------
+CREATE TABLE crop (
+    crop_id NUMBER PRIMARY KEY,
+    crop_name VARCHAR2(50),
+    season VARCHAR2(30),
+    growth_duration NUMBER
+);
+
+---------------------------------------------------------
+-- ZONE ↔ CROP (MANY TO MANY)
+---------------------------------------------------------
+CREATE TABLE zone_crop (
+    zone_code NUMBER,
+    crop_id NUMBER,
+    PRIMARY KEY (zone_code, crop_id),
+    FOREIGN KEY (zone_code) REFERENCES zone(zone_code),
+    FOREIGN KEY (crop_id) REFERENCES crop(crop_id)
+);
+
+---------------------------------------------------------
+-- EQUIPMENT TABLE (ONE ZONE → MANY EQUIPMENT)
+---------------------------------------------------------
+CREATE TABLE equipment (
+    equipment_id NUMBER PRIMARY KEY,
+    equipment_type VARCHAR2(50),
+    purpose VARCHAR2(100),
+    status VARCHAR2(30),
+    zone_code NUMBER,
+    FOREIGN KEY (zone_code) REFERENCES zone(zone_code)
+);
+
+---------------------------------------------------------
+-- HARVEST TABLE
+---------------------------------------------------------
+CREATE TABLE harvest (
+    harvest_id NUMBER PRIMARY KEY,
+    harvest_date DATE,
+    quantity NUMBER,
+    quality_grade VARCHAR2(20),
+    crop_id NUMBER,
+    zone_code NUMBER,
+    FOREIGN KEY (crop_id) REFERENCES crop(crop_id),
+    FOREIGN KEY (zone_code) REFERENCES zone(zone_code)
+);
+
+---------------------------------------------------------
+-- DISTRIBUTION CENTER TABLE
+---------------------------------------------------------
+CREATE TABLE distribution_center (
+    center_id NUMBER PRIMARY KEY,
+    location VARCHAR2(50),
+    capacity NUMBER,
+    manager VARCHAR2(50)
+);
+
+---------------------------------------------------------
+-- ZONE ↔ DISTRIBUTION CENTER (MANY TO MANY)
+---------------------------------------------------------
+CREATE TABLE zone_distribution (
+    zone_code NUMBER,
+    center_id NUMBER,
+    PRIMARY KEY (zone_code, center_id),
+    FOREIGN KEY (zone_code) REFERENCES zone(zone_code),
+    FOREIGN KEY (center_id) REFERENCES distribution_center(center_id)
+);
+
+--------------------------------------------------------------------------------
+-- =========================
+-- PART A: TCL (TRANSACTIONS)
+-- =========================
+--------------------------------------------------------------------------------
+
+-- Q1: Transaction (Patient + Treatment Log)
+BEGIN
+    INSERT INTO Patients VALUES (101, 'Ali', 'Admitted', 5000);
+
+    INSERT INTO Treatment_Log VALUES (1, 101, 'Patient Admitted', SYSDATE);
+
+    COMMIT;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+END;
+/
+
+-- Q2: Conditional Update + Rollback
+DECLARE
+    v_rows NUMBER;
+BEGIN
+    UPDATE Patients
+    SET status = 'Critical Review'
+    WHERE status = 'Under Observation';
+
+    v_rows := SQL%ROWCOUNT;
+
+    IF v_rows > 10 THEN
+        ROLLBACK;
+    ELSE
+        COMMIT;
+    END IF;
+END;
+/
+
+-- Q3: Duplicate Check
+DECLARE
+    v_count NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_count
+    FROM Patients
+    WHERE name = 'Ali';
+
+    IF v_count = 0 THEN
+        INSERT INTO Patients VALUES (102, 'Ali', 'Admitted', 7000);
+        COMMIT;
+    END IF;
+END;
+/
+
+-- Q4: Multiple Operations
+BEGIN
+    INSERT INTO Patients VALUES (103, 'Sara', 'Admitted', 4000);
+
+    UPDATE Patients SET bill_amount = 10000 WHERE patient_id = 101;
+
+    DELETE FROM Patients WHERE status = 'Discharged';
+
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN ROLLBACK;
+END;
+/
+
+-- Q5: SAVEPOINT
+BEGIN
+    UPDATE Patients SET status = 'Treatment Started' WHERE patient_id = 101;
+
+    SAVEPOINT phase1;
+
+    UPDATE Patients SET bill_amount = bill_amount + 5000;
+
+    ROLLBACK TO phase1;
+
+    COMMIT;
+END;
+/
+
+--------------------------------------------------------------------------------
+-- =========================
+-- PART B: PL/SQL
+-- =========================
+--------------------------------------------------------------------------------
+
+-- Q1: Department Salary Report
+CREATE OR REPLACE PROCEDURE dept_salary_report IS
+BEGIN
+    FOR rec IN (
+        SELECT department_id, SUM(salary) total_salary, AVG(salary) avg_salary
+        FROM employees
+        GROUP BY department_id
+    )
+    LOOP
+        DBMS_OUTPUT.PUT_LINE(rec.department_id || ' ' || rec.total_salary || ' ' || rec.avg_salary);
+    END LOOP;
+END;
+/
+
+-- Q2: Weekend Hire Logging
+BEGIN
+    FOR rec IN (SELECT * FROM employees)
+    LOOP
+        IF TO_CHAR(rec.hire_date,'DY','NLS_DATE_LANGUAGE=ENGLISH') IN ('SAT','SUN') THEN
+            INSERT INTO weekend_hires_log VALUES (rec.employee_id, rec.first_name, rec.hire_date);
+        END IF;
+    END LOOP;
+    COMMIT;
+END;
+/
+
+-- Q3: Trigger
+CREATE OR REPLACE TRIGGER salary_audit_trigger
+AFTER UPDATE OF salary ON employees
+FOR EACH ROW
+BEGIN
+    INSERT INTO salary_audit VALUES (:OLD.employee_id, :OLD.salary, :NEW.salary, SYSDATE);
+END;
+/
+
+-- Q4: Remove Duplicates
+CREATE OR REPLACE PROCEDURE remove_duplicates IS
+BEGIN
+    DELETE FROM employees
+    WHERE rowid NOT IN (
+        SELECT MIN(rowid)
+        FROM employees
+        GROUP BY first_name, last_name
+    );
+    COMMIT;
+END;
+/
+
+-- Q5: Salary Increment
+BEGIN
+    FOR rec IN (SELECT employee_id, job_id, salary FROM employees)
+    LOOP
+        IF rec.job_id LIKE '%MAN%' THEN
+            UPDATE employees SET salary = salary * 1.20 WHERE employee_id = rec.employee_id;
+
+        ELSIF rec.job_id LIKE 'IT%' THEN
+            UPDATE employees SET salary = salary * 1.15 WHERE employee_id = rec.employee_id;
+
+        ELSE
+            UPDATE employees SET salary = salary * 1.10 WHERE employee_id = rec.employee_id;
+        END IF;
+    END LOOP;
+    COMMIT;
+END;
+/
+
+--------------------------------------------------------------------------------
+-- =========================
+-- PART C: MONGODB
+-- =========================
+--------------------------------------------------------------------------------
+
+use smart_city;
+
+db.createCollection("water_quality");
+
+db.water_quality.insertOne({
+  sample_id: 101,
+  zone: "North River Zone",
+  pollution_level: 85,
+  contamination_type: "Chemical Waste",
+  status: "Untreated"
+});
+
+db.water_quality.find();
+
+db.water_quality.updateOne(
+  { sample_id: 103 },
+  { $set: { status: "Treated" } }
+);
+
+db.water_quality.aggregate([
+  { $group: { _id: "$zone", avg_pollution: { $avg: "$pollution_level" } } }
+]);
+
+--------------------------------------------------------------------------------
+-- =========================
+-- KEY POINTS
+-- =========================
+-- COMMIT, ROLLBACK, SAVEPOINT
+-- FOREIGN KEY relationships
+-- MANY TO MANY via bridge tables
+-- TRIGGERS use :OLD and :NEW
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- =========================
+-- Q3: HR DATABASE ADVANCED QUERIES
+-- =========================
+--------------------------------------------------------------------------------
+
+---------------------------------------------------------
+-- Q1: Employees earning more than max salary of other departments
+-- Logic:
+-- Compare each employee salary with MAX salary of all OTHER departments
+-- Exclude their own department using subquery
+---------------------------------------------------------
+SELECT e.employee_id, e.first_name, e.salary,
+       j.job_title,
+       d.department_name,
+       l.city AS location
+FROM employees e
+JOIN jobs j ON e.job_id = j.job_id
+JOIN departments d ON e.department_id = d.department_id
+JOIN locations l ON d.location_id = l.location_id
+WHERE e.salary > (
+    SELECT MAX(e2.salary)
+    FROM employees e2
+    WHERE e2.department_id <> e.department_id
+);
+
+---------------------------------------------------------
+-- Q2: Active employees with valid department in approved region
+-- Logic:
+-- Only employees whose job is active + department exists in allowed region
+---------------------------------------------------------
+SELECT e.employee_id, e.first_name,
+       j.job_title,
+       d.department_name,
+       r.region_name
+FROM employees e
+JOIN jobs j ON e.job_id = j.job_id
+JOIN departments d ON e.department_id = d.department_id
+JOIN locations l ON d.location_id = l.location_id
+JOIN countries c ON l.country_id = c.country_id
+JOIN regions r ON c.region_id = r.region_id
+WHERE j.job_status = 'ACTIVE'          -- assuming active job flag
+AND r.region_name IN ('Europe', 'Asia'); -- approved regions
+
+---------------------------------------------------------
+-- Q3: Correlated subquery (middle salary range in department)
+-- Logic:
+-- Salary > at least one employee in same dept
+-- AND < max salary of same dept
+---------------------------------------------------------
+SELECT e1.employee_id, e1.first_name, e1.salary, e1.department_id
+FROM employees e1
+WHERE e1.salary > (
+    SELECT MIN(e2.salary)
+    FROM employees e2
+    WHERE e2.department_id = e1.department_id
+)
+AND e1.salary < (
+    SELECT MAX(e3.salary)
+    FROM employees e3
+    WHERE e3.department_id = e1.department_id
+);
+
+---------------------------------------------------------
+-- Q4: Department-wise salary range analysis with joins
+-- Logic:
+-- Salary between MIN and MAX of department
+-- Show department + region info
+---------------------------------------------------------
+SELECT e.employee_id, e.first_name, e.salary,
+       d.department_name,
+       r.region_name
+FROM employees e
+JOIN departments d ON e.department_id = d.department_id
+JOIN locations l ON d.location_id = l.location_id
+JOIN countries c ON l.country_id = c.country_id
+JOIN regions r ON c.region_id = r.region_id
+WHERE e.salary > (
+    SELECT MIN(salary)
+    FROM employees
+    WHERE department_id = e.department_id
+)
+AND e.salary < (
+    SELECT MAX(salary)
+    FROM employees
+    WHERE department_id = e.department_id
+);
+
+---------------------------------------------------------
+-- Q5: Employee Transfer System (Department Change Tracking)
+-- Logic:
+-- 1. Check new department exists AND active
+-- 2. Insert transfer history
+-- 3. Prevent invalid transfers
+---------------------------------------------------------
+
+-- Transfer History Table (if not exists)
+CREATE TABLE employee_transfer_history (
+    employee_id NUMBER,
+    old_department NUMBER,
+    new_department NUMBER,
+    transfer_date DATE
+);
+
+-- Transfer Logic
+BEGIN
+    FOR rec IN (SELECT employee_id, department_id FROM employees)
+    LOOP
+        -- Check if new department is valid and active
+        IF EXISTS (
+            SELECT 1 FROM departments
+            WHERE department_id = 50   -- example new dept
+            AND status = 'ACTIVE'
+        ) THEN
+
+            -- Insert transfer record
+            INSERT INTO employee_transfer_history
+            VALUES (
+                rec.employee_id,
+                rec.department_id,
+                50,
+                SYSDATE
+            );
+
+            -- Update employee department
+            UPDATE employees
+            SET department_id = 50
+            WHERE employee_id = rec.employee_id;
+
+        END IF;
+    END LOOP;
+
+    COMMIT;
+END;
+/
